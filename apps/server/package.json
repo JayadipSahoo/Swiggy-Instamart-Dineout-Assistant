@@ -1,0 +1,16 @@
+{
+  "name": "@swiggy-assistant/server",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "swiggy-assistant-personal": "file:../..",
+    "zod": "^3.23.8"
+  }
+}

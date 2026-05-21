@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Swiggy Assistant",
+    "slug": "swiggy-assistant-personal",
+    "scheme": "swiggyassistant",
+    "version": "0.0.1",
+    "entryPoint": "./index.js",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": ["**/*"],
+    "plugins": [],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "backgroundColor": "#070A12"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
+

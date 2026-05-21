@@ -1,0 +1,20 @@
+{
+  "name": "swiggy-assistant-personal",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "concurrently -n server,mobile -c \"cyan,magenta\" \"npm run server:dev\" \"npm run mobile:start\"",
+    "dev:ngrok": "ngrok http 8787",
+    "dev:all": "concurrently -n server,mobile,ngrok -c \"cyan,magenta,yellow\" \"npm run server:dev\" \"npm run mobile:start\" \"npm run dev:ngrok\"",
+    "kill:8787": "npx kill-port 8787",
+    "server:dev:clean": "npm run kill:8787 && npm run server:dev",
+    "mobile:start": "npm --prefix apps/mobile start",
+    "server:dev": "npm --prefix apps/server run dev",
+    "server:start": "npm --prefix apps/server run start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0",
+    "kill-port": "^2.0.1"
+  }
+}
+
