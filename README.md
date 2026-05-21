@@ -361,11 +361,11 @@ export GEMINI_API_KEY="your-key"
 - Do not commit `.env` files or MCP credentials.
 - The mobile app only talks to **your** Express server, not directly to Gemini or Swiggy.
 
----
 
 ## Related docs
 
 - `apps/mobile/README.md` — Expo-specific setup
 - Swiggy MCP packages — install and authenticate per vendor README before running `npm run dev`
-#   S w i g g y - I n s t a m a r t - D i n e o u t - A s s i s t a n t  
+#   S w i g g y - I n s t a m a r t - D i n e o u t - A s s i s t a n t 
+ 
  
