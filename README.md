@@ -17,18 +17,18 @@ A personal Swiggy assistant that unifies **Food delivery**, **Instamart grocerie
 
 ```bash
 npm install
-npm run dev              # server + Expo together
-npm run server:dev:clean # kill port 8787, then start server only
+npm run dev                 # server + Expo together
+npm run server:dev:clean    # kill port 8787, then start server only
 ```
 
-Point the mobile app at your machine (e.g. `http://<LAN-IP>:8787`) via **Profile → API settings**.
+Point the mobile app at your machine (e.g. `http://<IP>:8787`) via **Profile → API settings**.
 
 ---
 
 ## Tech stack
 
 | Layer | Technologies |
-|-------|----------------|
+|-------|--------------|
 | **Mobile** | React Native 0.81, Expo ~54, TypeScript, React Navigation (tabs + native stack), AsyncStorage, expo-blur / linear-gradient / location |
 | **API server** | Node.js (ES modules), Express 4, Zod validation, CORS |
 | **AI / NLU** | Google Gemini (`generateContent`) — `gemini-2.0-flash` by default via Google AI Studio |
@@ -44,9 +44,7 @@ External APIs called by this project:
 
 ## MCP tools (Swiggy)
 
-The server spawns MCP servers using environment commands (`MCP_FOOD_CMD`, `MCP_INSTAMART_CMD`, `MCP_DINEOUT_CMD`). Each server exposes tools the assistant calls with `callTool(name, args)`.
-
-Use `GET /mcp/tools` (when Instamart MCP is configured) to list the live tool catalog from the connected Instamart process.
+The server spawns MCP servers using environment commands (`MCP_FOOD_CMD`, `MCP_INSTAMART_CMD`, `MCP_DINEOUT_CMD`). Each server exposes tools the assistant calls with `callTool(name, args)`. Use `GET /mcp/tools` (when Instamart MCP is configured) to list the live tool catalog from the connected Instamart process.
 
 ### Instamart MCP — tools used by this app
 
@@ -199,6 +197,7 @@ sequenceDiagram
   M->>S: POST /chat { message }
   S->>L: routeWithLlm (if GEMINI_API_KEY)
   L-->>S: domain + intent + query
+
   alt instamart.cook_recipe
     S->>L: expandIngredientChecklist
     L-->>S: ingredients[]
@@ -212,6 +211,7 @@ sequenceDiagram
     FD-->>S: restaurants
     S-->>M: cards + actions
   end
+
   M->>U: Render cards / cook UI / headline
 ```
 
@@ -219,10 +219,10 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-  [*] --> ConfirmIngredients: instamart.cook_recipe
-  ConfirmIngredients --> PickProducts: action cook_confirm_ingredients
-  PickProducts --> InCart: action cook_add_selected_to_cart
-  InCart --> [*]: Instamart cart updated via MCP
+  [*] --> ConfirmIngredients : instamart.cook_recipe
+  ConfirmIngredients --> PickProducts : action cook_confirm_ingredients
+  PickProducts --> InCart : action cook_add_selected_to_cart
+  InCart --> [*] : Instamart cart updated via MCP
 ```
 
 ### Carts (two separate Swiggy carts)
@@ -361,11 +361,9 @@ export GEMINI_API_KEY="your-key"
 - Do not commit `.env` files or MCP credentials.
 - The mobile app only talks to **your** Express server, not directly to Gemini or Swiggy.
 
----
-
 ## Related docs
 
 - `apps/mobile/README.md` — Expo-specific setup
 - Swiggy MCP packages — install and authenticate per vendor README before running `npm run dev`
-#   S w i g g y - I n s t a m a r t - D i n e o u t - A s s i s t a n t  
- 
+
+# Swiggy-Instamart-Dineout-Assistant
