@@ -460,17 +460,60 @@ function normalizeFoodTrackFromToolResult(raw) {
   return { ...base, rawTextPreview: typeof maybeText === "string" ? maybeText.slice(0, 800) : null };
 }
 
+function extractAddressListFromGetAddressesResult(raw) {
+  const textBlocks = Array.isArray(raw?.content)
+    ? raw.content.filter((c) => c?.type === "text" && typeof c?.text === "string").map((c) => c.text)
+    : [];
+  const parsedFromText = textBlocks.map((t) => tryParseJsonText(t)).filter(Boolean);
+
+  const roots = [
+    raw,
+    raw?.structuredContent,
+    raw?.structuredContent?.data,
+    ...parsedFromText,
+    ...parsedFromText.map((x) => x?.data).filter(Boolean)
+  ];
+
+  for (const json of roots) {
+    if (!json || typeof json !== "object") continue;
+    if (Array.isArray(json?.addresses)) return json.addresses;
+    if (Array.isArray(json?.savedAddresses)) return json.savedAddresses;
+    if (Array.isArray(json?.addressList)) return json.addressList;
+    if (Array.isArray(json?.data?.addresses)) return json.data.addresses;
+    if (Array.isArray(json?.data?.savedAddresses)) return json.data.savedAddresses;
+    if (Array.isArray(json?.data?.addressList)) return json.data.addressList;
+    if (Array.isArray(json?.data?.data?.addresses)) return json.data.data.addresses;
+    if (Array.isArray(json?.data?.data?.savedAddresses)) return json.data.data.savedAddresses;
+    if (Array.isArray(json)) return json;
+  }
+  return [];
+}
+
+function pickAddressId(address) {
+  if (!address || typeof address !== "object") return null;
+  const id =
+    address.addressId ??
+    address.id ??
+    address.address_id ??
+    address.address?.id ??
+    address.address?.addressId ??
+    address.meta?.addressId ??
+    null;
+  if (id == null) return null;
+  const out = String(id).trim();
+  return out || null;
+}
+
 async function ensureActiveAddressId() {
   if (activeAddressId) return activeAddressId;
   // Prefer food server for delivery addresses.
   try {
     const food = getMcp("food");
     const addrRes = await food.callTool("get_addresses", {});
-    const maybeText = addrRes?.content?.find?.((c) => c?.type === "text" && typeof c?.text === "string")?.text;
-    const json = tryParseJsonText(maybeText) ?? addrRes;
-    const first = (json?.data?.addresses?.[0] ?? json?.addresses?.[0]) || null;
-    if (first?.id) {
-      activeAddressId = String(first.id);
+    const first = extractAddressListFromGetAddressesResult(addrRes)[0] ?? null;
+    const firstId = pickAddressId(first);
+    if (firstId) {
+      activeAddressId = firstId;
       return activeAddressId;
     }
   } catch {
@@ -480,11 +523,10 @@ async function ensureActiveAddressId() {
   try {
     const instamart = getMcp("instamart");
     const addrRes = await instamart.callTool("get_addresses", {});
-    const maybeText = addrRes?.content?.find?.((c) => c?.type === "text" && typeof c?.text === "string")?.text;
-    const json = tryParseJsonText(maybeText) ?? addrRes;
-    const first = (json?.data?.addresses?.[0] ?? json?.addresses?.[0]) || null;
-    if (first?.id) {
-      activeAddressId = String(first.id);
+    const first = extractAddressListFromGetAddressesResult(addrRes)[0] ?? null;
+    const firstId = pickAddressId(first);
+    if (firstId) {
+      activeAddressId = firstId;
       return activeAddressId;
     }
   } catch {
@@ -1067,10 +1109,9 @@ app.get("/widget/food-search", async (req, res) => {
       try {
         const instamart = getMcp("instamart");
         const addrRes = await instamart.callTool("get_addresses", {});
-        const maybeText = addrRes?.content?.find?.((c) => c?.type === "text" && typeof c?.text === "string")?.text;
-        const json = tryParseJsonText(maybeText) ?? addrRes;
-        const first = (json?.data?.addresses?.[0] ?? json?.addresses?.[0]) || null;
-        if (first?.id) activeAddressId = String(first.id);
+        const first = extractAddressListFromGetAddressesResult(addrRes)[0] ?? null;
+        const firstId = pickAddressId(first);
+        if (firstId) activeAddressId = firstId;
       } catch {
         // ignore
       }
@@ -1250,44 +1291,62 @@ app.post("/address/active", (req, res) => {
 // Saved addresses (MCP-backed).
 app.get("/addresses", async (_req, res) => {
   try {
-    // Both Instamart and Food expose get_addresses. We'll call Instamart as the canonical source.
-    const instamart = getMcp("instamart");
-    const result = await instamart.callTool("get_addresses", {});
+    const raws = [];
+    const errors = [];
+    const merged = [];
+    const seen = new Set();
 
-    // We don't assume exact response shape; pass through and also attempt a best-effort normalize.
-    const raw = result;
-
-    // mcp-remote commonly returns { content: [{ type:"text", text:"{...json...}" }] }
-    let toolJson = raw;
-    const maybeText = raw?.content?.find?.((c) => c?.type === "text" && typeof c?.text === "string")?.text;
-    if (typeof maybeText === "string") {
-      try {
-        toolJson = JSON.parse(maybeText);
-      } catch {
-        toolJson = raw;
+    async function pullFrom(serverKey) {
+      const client = getMcp(serverKey);
+      const result = await client.callTool("get_addresses", {});
+      raws.push({ server: serverKey, raw: result });
+      const list = extractAddressListFromGetAddressesResult(result);
+      for (const a of list) {
+        const addressId = String(pickAddressId(a) ?? "").trim();
+        if (!addressId || seen.has(addressId)) continue;
+        seen.add(addressId);
+        merged.push({
+          id: addressId,
+          label: String(a?.addressTag ?? a?.addressTagName ?? a?.addressCategory ?? a?.label ?? "Saved"),
+          subtitle: String(
+            a?.addressLine ??
+              a?.address ??
+              a?.fullAddress ??
+              a?.displayAddress ??
+              a?.address?.fullAddress ??
+              a?.address?.addressLine ??
+              ""
+          ).trim(),
+          addressId
+        });
       }
     }
 
-    const list = Array.isArray(toolJson?.addresses)
-      ? toolJson.addresses
-      : Array.isArray(toolJson?.data?.addresses)
-        ? toolJson.data.addresses
-        : Array.isArray(toolJson)
-          ? toolJson
-          : [];
-    const normalized = list.map((a, idx) => ({
-      id: String(a?.addressId ?? a?.id ?? idx),
-      label: String(a?.addressTag ?? a?.addressTagName ?? a?.addressCategory ?? a?.label ?? "Saved"),
-      subtitle: String(a?.addressLine ?? a?.address ?? a?.fullAddress ?? a?.displayAddress ?? "").trim(),
-      addressId: String(a?.addressId ?? a?.id ?? "")
-    }));
-
-    // Default active address to the first returned address (first run convenience).
-    if (!activeAddressId && normalized.length && normalized[0].addressId) {
-      activeAddressId = normalized[0].addressId;
+    // Try both servers; if one fails, still return from the other.
+    try {
+      await pullFrom("instamart");
+    } catch (e) {
+      errors.push({ server: "instamart", error: String(e?.message ?? e) });
+    }
+    try {
+      await pullFrom("food");
+    } catch (e) {
+      errors.push({ server: "food", error: String(e?.message ?? e) });
     }
 
-    return res.json({ ok: true, raw, addresses: normalized });
+    // Default active address to the first returned address (first run convenience).
+    if (!activeAddressId && merged.length && merged[0].addressId) {
+      activeAddressId = merged[0].addressId;
+    }
+    if (!merged.length) {
+      return res.status(502).json({
+        ok: false,
+        error: "No saved addresses returned by MCP servers",
+        raws,
+        errors
+      });
+    }
+    return res.json({ ok: true, raws, errors, addresses: merged });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message ?? "Failed to fetch addresses" });
   }
@@ -1347,15 +1406,9 @@ app.get("/food/menu-items", async (req, res) => {
       try {
         const instamart = getMcp("instamart");
         const addrRes = await instamart.callTool("get_addresses", {});
-        const maybeText = addrRes?.content?.find?.((c) => c?.type === "text" && typeof c?.text === "string")?.text;
-        const json = tryParseJsonText(maybeText) ?? addrRes;
-        const first =
-          (json?.data?.addresses?.[0] ??
-            json?.addresses?.[0] ??
-            json?.data?.data?.addresses?.[0] ??
-            json?.data?.data?.addresses?.[0]) ||
-          null;
-        if (first?.id) activeAddressId = String(first.id);
+        const first = extractAddressListFromGetAddressesResult(addrRes)[0] ?? null;
+        const firstId = pickAddressId(first);
+        if (firstId) activeAddressId = firstId;
       } catch {
         // ignore
       }
@@ -1478,15 +1531,9 @@ app.post("/food/cart/add", async (req, res) => {
       try {
         const instamart = getMcp("instamart");
         const addrRes = await instamart.callTool("get_addresses", {});
-        const maybeText = addrRes?.content?.find?.((c) => c?.type === "text" && typeof c?.text === "string")?.text;
-        const json = tryParseJsonText(maybeText) ?? addrRes;
-        const first =
-          (json?.data?.addresses?.[0] ??
-            json?.addresses?.[0] ??
-            json?.data?.data?.addresses?.[0] ??
-            json?.data?.data?.addresses?.[0]) ||
-          null;
-        if (first?.id) activeAddressId = String(first.id);
+        const first = extractAddressListFromGetAddressesResult(addrRes)[0] ?? null;
+        const firstId = pickAddressId(first);
+        if (firstId) activeAddressId = firstId;
       } catch {
         // ignore
       }
@@ -2139,15 +2186,9 @@ app.post("/chat", async (req, res) => {
       try {
         const instamart = getMcp("instamart");
         const addrRes = await instamart.callTool("get_addresses", {});
-        const maybeText = addrRes?.content?.find?.((c) => c?.type === "text" && typeof c?.text === "string")?.text;
-        const json = tryParseJsonText(maybeText) ?? addrRes;
-        const first =
-          (json?.data?.addresses?.[0] ??
-            json?.addresses?.[0] ??
-            json?.data?.data?.addresses?.[0] ??
-            json?.data?.data?.addresses?.[0]) ||
-          null;
-        if (first?.id) activeAddressId = String(first.id);
+        const first = extractAddressListFromGetAddressesResult(addrRes)[0] ?? null;
+        const firstId = pickAddressId(first);
+        if (firstId) activeAddressId = firstId;
       } catch {
         // ignore; we'll fall back to asking user to select.
       }
@@ -2270,11 +2311,9 @@ app.post("/chat", async (req, res) => {
       try {
         const instamart = getMcp("instamart");
         const addrRes = await instamart.callTool("get_addresses", {});
-        const maybeText = addrRes?.content?.find?.((c) => c?.type === "text" && typeof c?.text === "string")?.text;
-        const json = tryParseJsonText(maybeText) ?? addrRes;
-        const first =
-          (json?.data?.addresses?.[0] ?? json?.addresses?.[0] ?? json?.data?.data?.addresses?.[0]) || null;
-        if (first?.id) activeAddressId = String(first.id);
+        const first = extractAddressListFromGetAddressesResult(addrRes)[0] ?? null;
+        const firstId = pickAddressId(first);
+        if (firstId) activeAddressId = firstId;
       } catch {
         // ignore
       }
@@ -2447,4 +2486,3 @@ app.listen(port, () => {
   // Keep log minimal; useful during ngrok testing
   console.log(`API listening on http://localhost:${port}`);
 });
-

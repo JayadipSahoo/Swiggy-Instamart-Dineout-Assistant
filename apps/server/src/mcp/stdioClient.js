@@ -55,20 +55,22 @@ export class McpStdioClient {
     if (!this.command?.trim()) throw new Error(`[mcp:${this.name}] missing command`);
 
     const parts = splitCommand(this.command);
-    let bin = parts[0];
+    const bin = parts[0];
     const args = parts.slice(1);
 
-    // Windows: executables like npx are usually npx.cmd
+    // Windows + Node 22 can throw EINVAL when spawning *.cmd directly with args.
+    // Use cmd.exe /c with the original command string for reliable launch.
     if (process.platform === "win32") {
-      if (bin === "npx") bin = "npx.cmd";
-      if (bin === "npm") bin = "npm.cmd";
-      if (bin === "node") bin = "node.exe";
+      this.#proc = spawn("cmd.exe", ["/d", "/s", "/c", this.command], {
+        stdio: "pipe",
+        env: { ...process.env, ...this.env }
+      });
+    } else {
+      this.#proc = spawn(bin, args, {
+        stdio: "pipe",
+        env: { ...process.env, ...this.env }
+      });
     }
-
-    this.#proc = spawn(bin, args, {
-      stdio: "pipe",
-      env: { ...process.env, ...this.env },
-    });
 
     this.#proc.on("error", (err) => {
       const e = new Error(`[mcp:${this.name}] spawn failed: ${err?.message ?? String(err)}`);
